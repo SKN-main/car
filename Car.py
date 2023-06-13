@@ -8,26 +8,32 @@ from Queue import Queue
 from collections import Counter
 from copy import deepcopy
 
+IMAGE_SIZE = (1280, 720)
+
 
 class Car:
     def __init__(self) -> None:
         self.lane_detector = LaneDetector()
-        self.left_tracker = Tracker((300, 400), 190)
-        self.right_tracker = Tracker((950, 400), 190)
-        self.road_signs_detector = RoadSignsDetector('20e_street_20e_printed.pt')
+        self.left_tracker = Tracker((0.2, 0.7), 200)
+        # self.right_tracker = Tracker((0.8, 0.7), 100)
+        self.right_tracker = Tracker((0.8, 0.7), 200)
+        # self.left_tracker = Tracker((250, 500), 190)
+        # self.right_tracker = Tracker((950, 500), 190)
         self.direction = Direction.STRAIGHT
         self.turn = None
+        self.recent_tracker = self.left_tracker
 
+
+        self.road_signs_detector = RoadSignsDetector('20e_street_20e_printed.pt')
         self.possible_signs = Queue(8)
         self.possible_directions = Queue(10)
         self.prev_sign = None
         self.detected_sign = None
 
-
     def detect_road_sign(self, image):
         nearest_sign = None
 
-        self.road_signs_detector.predict(image)
+        image = self.road_signs_detector.predict(image)
         signs = self.road_signs_detector.get_predicted_signs()
 
         nearest_signs = sorted(signs, key=lambda t: abs(t[1]-t[3])*abs(t[0]-t[2]))
@@ -54,64 +60,67 @@ class Car:
             self.detected_sign = 'c4'
         else:
             self.detected_sign = None
+        
+        return image
 
+    def straight(self):
+        left_tracker_dir_val =  self.left_tracker.get_direction().value
+        right_tracker_dir_val =  self.right_tracker.get_direction().value
+
+        if Direction.STRAIGHT.value in [left_tracker_dir_val, right_tracker_dir_val]:
+            self.direction = Direction.STRAIGHT
+
+        if self.recent_tracker is not None:
+            self.direction = self.recent_tracker.get_direction()
+
+        if left_tracker_dir_val == right_tracker_dir_val:
+            self.direction = self.left_tracker.get_direction() 
     
     def __call__(self, frame):
-        self.detect_road_sign(frame)
-
+        frame_with_road_sign = self.detect_road_sign(frame)
         mask, turn = self.lane_detector(frame)
 
-        self.turn = turn
-        
-        left_tracker_direction = self.left_tracker.track(mask)
-        right_tracker_direction = self.right_tracker.track(mask)
+        self.left_tracker.track(mask)
+        self.right_tracker.track(mask)
 
+        # choose tracker
 
-        if self.turn.value == Direction.STRAIGHT.value:
-            if left_tracker_direction.value == Direction.STRAIGHT.value:
-                self.direction = left_tracker_direction
-            elif right_tracker_direction.value == Direction.STRAIGHT.value:
-                self.direction = right_tracker_direction
-            else:
-                self.direction = right_tracker_direction
+        if self.right_tracker.is_active:
+            self.recent_tracker = self.right_tracker
+        elif self.left_tracker.is_active:
+            self.recent_tracker = self.left_tracker
+
+        if self.turn is not None:
+            if self.turn.value == Direction.LEFT and not self.right_tracker.is_active:
+                self.direction = Direction.LEFT
+                self.turn = Direction.LEFT
+            elif self.turn.value == Direction.RIGHT and not self.left_tracker.is_active:
+                self.direction = Direction.RIGHT
+                self.turn = Direction.RIGHT
         else:
-            if self.turn.value == Direction.LEFT.value:
-                if self.left_tracker.is_active:
-                    self.direction = right_tracker_direction
-                    self.turn = Direction.STRAIGHT
-                else:
-                    self.direction = self.turn
-            elif self.turn.value == Direction.RIGHT.value:
-                if self.right_tracker.is_active:
-                    self.direction = left_tracker_direction
-                    self.turn = Direction.STRAIGHT
-                else:
-                    self.direction = self.turn
-
-
-        if self.detected_sign == None:
-            if self.prev_sign == 'c12':
-                self.direction == Direction.RIGHT
-                if right_tracker_direction.value == Direction.LEFT.value and self.right_tracker.is_active and left_tracker_direction.value == Direction.LEFT.value:
-                    self.prev_sign = None
-            if self.prev_sign == 'b20':
-                # Stop and wait 5 seconds
-                pass
-
-            # if self.prev_sign ==
-
+            if turn.value == Direction.LEFT.value:
+                self.direction = Direction.LEFT
+                self.recent_tracker = self.right_tracker
+            elif turn.value == Direction.RIGHT.value:
+                self.direction = Direction.RIGHT
+                self.recent_tracker = self.left_tracker
+            else:
+                self.straight()
+                self.turn = None
 
         cv2.putText(mask, self.direction.name, (500 ,500), 1, 3, (0, 0, 255), 3)
-        if self.turn.value != Direction.STRAIGHT.value:
+        if self.turn is not None:
             cv2.putText(mask, "Turn: " + self.turn.name, (500 ,550), 1, 3, (0, 0, 255), 3)
         if self.detected_sign:
-            cv2.putText(frame, "sign: " + self.detected_sign, (500 ,600), 1, 3, (0, 0, 255), 3)
+            cv2.putText(frame_with_road_sign, "sign: " + self.detected_sign, (500 ,600), 1, 3, (0, 0, 255), 3)
         if self.prev_sign:
-            cv2.putText(frame, "prev sign: " + self.prev_sign, (500 ,650), 1, 3, (0, 0, 255), 3)
+            cv2.putText(frame_with_road_sign, "prev sign: " + self.prev_sign, (500 ,650), 1, 3, (0, 0, 255), 3)
 
 
         self.left_tracker.draw(mask)
         self.right_tracker.draw(mask)
+
+        cv2.imshow("frame", frame_with_road_sign)
 
         return mask, self.direction
 
@@ -125,7 +134,8 @@ def show_video():
     is_finish = False
     while not is_finish:
         is_finish = False
-        cap = cv2.VideoCapture('przykladowa_trasa.mp4')
+        cap = cv2.VideoCapture(0)
+        # cap = cv2.VideoCapture('przykladowa_trasa.mp4')
         # cap = cv2.VideoCapture('Untitled.mp4')
         success, image = cap.read()
         while success and not is_finish:
@@ -133,13 +143,12 @@ def show_video():
             if not success:
                 break
             
-            
+            image = cv2.resize(image, IMAGE_SIZE)
             mask, direction = car(image)
 
 
-            cv2.imshow('Mask', mask)
-            cv2.imshow('Frame', image)
-
+            # cv2.imshow('image', image)
+            cv2.imshow('Frame', mask)
 
             key = cv2.waitKey(10) & 0xFF
             if key == ord('q'):
