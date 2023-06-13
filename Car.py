@@ -22,6 +22,7 @@ class Car:
         self.direction = Direction.STRAIGHT
         self.turn = None
         self.recent_tracker = self.left_tracker
+        self.sign_direction = None
 
 
         self.road_signs_detector = RoadSignsDetector('20e_street_20e_printed.pt')
@@ -107,6 +108,29 @@ class Car:
             else:
                 self.straight()
                 self.turn = None
+
+
+        if (self.prev_sign == 'c12' or self.prev_sign == 'c2') and self.detected_sign is None:
+            self.sign_direction = Direction.RIGHT
+            if turn is not None or turn.value != Direction.STRAIGHT.value:
+                self.direction = deepcopy(self.sign_direction)
+                if self.right_tracker.is_active and self.right_tracker.get_direction().value == Direction.LEFT.value:
+                    self.prev_sign = None
+                    self.sign_direction = None
+
+        if self.prev_sign == 'c4' and self.detected_sign is None:
+            self.sign_direction = Direction.LEFT
+            if turn is not None or turn.value != Direction.STRAIGHT.value:
+                self.direction = deepcopy(self.sign_direction)
+                if self.left_tracker.is_active and self.left_tracker.get_direction().value == Direction.RIGHT.value:
+                    self.prev_sign = None
+                    self.sign_direction = None
+
+        if self.prev_sign == 'b20' and self.detected_sign is None:
+            pass
+            # stop the car
+
+
 
         cv2.putText(mask, self.direction.name, (500 ,500), 1, 3, (0, 0, 255), 3)
         if self.turn is not None:

@@ -84,7 +84,7 @@ class LaneDetector:
         self.distance_points = []
         self.center_pointer = [(IMAGE_SIZE[0]//2, IMAGE_SIZE[1]-30), (IMAGE_SIZE[0]//2, IMAGE_SIZE[1])]
         self.distances = []
-        self.roi_height = 0.4
+        self.roi_height = 0.5
 
     def apply_mask(self, image):
         img = np.copy(image)

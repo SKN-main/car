@@ -17,7 +17,10 @@ class RoadSignsDetector():
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # img = cv2.resize(img, (640, 640))
 
-        result = self.model(img)
+        img_to_pred = np.zeros(frame.shape)
+        img_to_pred[:frame.shape[0]//2, :, :] = img[:frame.shape[0]//2, :, :]
+
+        result = self.model(img_to_pred)
 
 
         # rendered_img = result.render()[0]
